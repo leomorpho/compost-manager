@@ -1,3 +1,6 @@
+#ifndef MAIN_H
+#define MAIN_H
+
 #include <stdbool.h>
 
 enum state {high, low};
@@ -41,3 +44,5 @@ void changeState(unsigned long currentMillis, struct Measurements measurements, 
 void logEffectorStateOnConsole(struct Effectors effectors);
 void display(struct Measurements measurements);
 void logInfoOnConsole(struct Measurements measurements);
+
+#endif // MAIN_H
