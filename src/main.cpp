@@ -4,7 +4,6 @@
 #include <DHT.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-#include <main.h>
 
 #define DHTTYPE DHT11
 
@@ -53,6 +52,40 @@ OneWire oneWire(ONE_WIRE_PIN);
 DallasTemperature soilTempProbe( & oneWire);
 
 // --------------- Structures -------------------------
+struct Measurements {
+  float airHumidity;
+  float airTemp;
+  float airHeatIndex;
+  float airO2;
+  float airMethane;
+  float soilHumidity;
+  float soilTemp;
+}
+measurements;
+
+// Sensor is a non-specific implementation for an sensor
+struct Sensor {
+  int signalPin;
+};
+
+// Effector is a non-specific implementation for an effector
+struct Effector {
+  byte state;
+  byte prevState; // Used to log to console only if there's a change
+  unsigned long prevMillis;
+  unsigned long onInterval;
+  unsigned long offInterval;
+};
+
+// Effectors unites all effectors for easy bookkeeping
+struct Effectors {
+  struct Effector waterPump;
+  struct Effector blower;
+  struct Effector radiatorValve; // Opens air system to radiator
+  struct Effector shortestPathValve; // Opens air system to shortest path
+  struct Effector airRenewalValve; // Opens air circulation to ambient atmosphere
+};
+
 // Sensors unites all sensors for easy bookkeeping
 struct Sensors {
   DHT dht; // Air humidity and temp
@@ -61,6 +94,14 @@ struct Sensors {
   Sensor methane; // TODO
 };
 
+//------------ HEADERS---------------------
+void changeState(unsigned long currentMillis, struct Measurements measurements, struct Effectors *effectors);
+void logEffectorStateOnConsole(struct Effectors effectors);
+void display(struct Measurements measurements);
+void logInfoOnConsole(struct Measurements measurements);
+
+//----------- STRUCT INSTANCES ---------------
+
 Sensors sensors {
   .dht = dht,
   .soilTemp = soilTempProbe,
@@ -68,36 +109,36 @@ Sensors sensors {
 
 Effectors effectors {
   .waterPump = {
-      .state = low,
-      .prevState = low,
+      .state = LOW,
+      .prevState = LOW,
       .prevMillis = 0,
       .onInterval = 1000,
       .offInterval = 0
     },
     .blower = {
-      .state = low,
-      .prevState = low,
+      .state = LOW,
+      .prevState = LOW,
       .prevMillis = 0,
       .onInterval = BLOWER_ON_INTERVAL,
       .offInterval = BLOWER_OFF_INTERVAL
     },
     .radiatorValve = {
-      .state = low,
-      .prevState = low,
+      .state = LOW,
+      .prevState = LOW,
       .prevMillis = 0,
       .onInterval = BLOWER_ON_INTERVAL + VALVE_BUFFER_INTERVAL,
       .offInterval = 0
     },
     .shortestPathValve = {
-      .state = low,
-      .prevState = low,
+      .state = LOW,
+      .prevState = LOW,
       .prevMillis = 0,
       .onInterval = BLOWER_ON_INTERVAL + VALVE_BUFFER_INTERVAL,
       .offInterval = 0,
     },
     .airRenewalValve = {
-      .state = low,
-      .prevState = low,
+      .state = LOW,
+      .prevState = LOW,
       .prevMillis = 0,
       .onInterval = BLOWER_ON_INTERVAL,
       .offInterval = BLOWER_OFF_INTERVAL * 4
@@ -185,13 +226,13 @@ void changeState(unsigned long currentMillis, Measurements m, Effectors *e) {
   if (IS_O2_SENSOR_ENABLED) {
     if (m.airO2 < AIR_O2_MIN) {
       // If O2 is low, continuously renew air until the normal level is reached.
-      e->airRenewalValve.state = high;
+      e->airRenewalValve.state = HIGH;
       if (e->airRenewalValve.prevState != e->airRenewalValve.state) {
         Serial.print(F("O2 low: opening air renewal valve"));
       }
       circulateAir = true;
     } else if (m.airO2 >= AIR_O2_NORM) {
-      e->airRenewalValve.state = low;
+      e->airRenewalValve.state = LOW;
       if (e->airRenewalValve.prevState != e->airRenewalValve.state) {
         Serial.print(F("O2 normal: closing air renewal valve"));
       }
@@ -201,30 +242,30 @@ void changeState(unsigned long currentMillis, Measurements m, Effectors *e) {
     if (millis() - e->airRenewalValve.prevMillis >= e->airRenewalValve.offInterval){
       Serial.print(F("Opening air renewal valve on set schedule"));
       e->airRenewalValve.prevMillis = millis();
-      e->airRenewalValve.state = high;    
+      e->airRenewalValve.state = HIGH;    
       circulateAir = true;
     } else if (millis() - e->airRenewalValve.prevMillis >= e->airRenewalValve.onInterval && 
-        e->airRenewalValve.state == high) {
+        e->airRenewalValve.state == HIGH) {
       Serial.print(F("Closing air renewal valve on set schedule"));
       e->airRenewalValve.prevMillis = millis();
-      e->airRenewalValve.state = high;  
+      e->airRenewalValve.state = HIGH;  
     }
   }
 
   // --------- Radiator -------------
   // Temperature should NEVER go above maximum.
   e->radiatorValve.prevState = e->radiatorValve.state;
-  if (m.airTemp >= MAX_TEMP_C && e->radiatorValve.state == low) {
+  if (m.airTemp >= MAX_TEMP_C && e->radiatorValve.state == LOW) {
     // Open radiatior path and close direct path.
-    e->radiatorValve.state = high;
-    e->shortestPathValve.state = low;
+    e->radiatorValve.state = HIGH;
+    e->shortestPathValve.state = LOW;
     circulateAir = true;
     if (e->radiatorValve.prevState != e->radiatorValve.state) {
       Serial.print(F("Temperature high: opening radiator valve and closing shortest path valve"));
     }
-  } else if (m.airTemp < MAX_TEMP_C && e->radiatorValve.state == high) {
-    e->radiatorValve.state = low;
-    e->shortestPathValve.state = high;
+  } else if (m.airTemp < MAX_TEMP_C && e->radiatorValve.state == HIGH) {
+    e->radiatorValve.state = LOW;
+    e->shortestPathValve.state = HIGH;
     if (e->radiatorValve.prevState != e->radiatorValve.state) {
       Serial.print(F("Temperature in range: closing radiator valve and opening shortest path valve"));
     }
@@ -232,19 +273,19 @@ void changeState(unsigned long currentMillis, Measurements m, Effectors *e) {
   // --------- Humidity -------------
   e->waterPump.prevState = e->waterPump.state;
   if (m.soilHumidity >= SOIL_H2O_MAX) {
-    e->waterPump.state = low;
+    e->waterPump.state = LOW;
     circulateAir = true;
     if (e->waterPump.prevState != e->waterPump.state) {
       Serial.print(F("Soil humidity high: aerating for evaporation"));
     }
   } else if (m.soilHumidity < SOIL_H2O_MIN) {
-    e->waterPump.state = high;
+    e->waterPump.state = HIGH;
     circulateAir = true;
     if (e->waterPump.prevState != e->waterPump.state) {
       Serial.print(F("Soil humidity low: adding water\n"));
     }
-  } else if (m.soilHumidity >= SOIL_H2O_NORM && e->waterPump.state == high) {
-    e->waterPump.state = low;
+  } else if (m.soilHumidity >= SOIL_H2O_NORM && e->waterPump.state == HIGH) {
+    e->waterPump.state = LOW;
     if (e->waterPump.prevState != e->waterPump.state) {
       Serial.print(F("Soil humidity in range: stop water pump"));
     }
@@ -254,16 +295,16 @@ void changeState(unsigned long currentMillis, Measurements m, Effectors *e) {
   if (circulateAir) {
     // Blow air until above params are in check and do not toggle `circulateAir` to true anymore.
     e->blower.prevMillis = millis();
-    e->blower.state = high;
+    e->blower.state = HIGH;
     if (e->blower.prevState != e->blower.state) {
       // Serial.print(F("Turning blower on to adjust parameters"));
     }
   } else if (millis() - e->blower.prevMillis >= BLOWER_OFF_INTERVAL) {
     e->blower.prevMillis = millis();
-    e->blower.state = high;
+    e->blower.state = HIGH;
   } else if (millis() - e->blower.prevMillis >= BLOWER_ON_INTERVAL) {
     e->blower.prevMillis = millis();
-    e->blower.state = low;
+    e->blower.state = LOW;
   }
 
   // Log state of effectors if an update occured

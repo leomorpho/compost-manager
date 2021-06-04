@@ -1,5 +1,7 @@
+#ifdef UNIT_TEST
+
 #include <unity.h>
-#include <main.h>
+#include <state.h>
 
 // Measurements create_normal_measurements_state() {
 //   struct Measurements m;
@@ -63,10 +65,17 @@
 //   // logEffectorStateOnConsole(e);
 // }
 
+void test_do_something(){
+  do_something();
+}
+
 int main(int argc, char ** argv) {
   UNITY_BEGIN();
 
   //RUN_TEST(test_high_temperature);
+  RUN_TEST(test_do_something);
 
   UNITY_END();
 }
+
+#endif
