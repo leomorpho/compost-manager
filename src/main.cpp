@@ -70,7 +70,8 @@ struct Sensor {
 
 // Effector is a non-specific implementation for an effector
 struct Effector {
-  byte state;
+  int pin;
+  //byte state;
   byte prevState; // Used to log to console only if there's a change
   unsigned long prevMillis;
   unsigned long onInterval;
@@ -99,6 +100,7 @@ void changeState(unsigned long currentMillis, struct Measurements measurements, 
 void logEffectorStateOnConsole(struct Effectors effectors);
 void display(struct Measurements measurements);
 void logInfoOnConsole(struct Measurements measurements);
+// void turnOnEffectorFor5Sec(struct Effector effector, unsigned long currentMillis);
 
 //----------- STRUCT INSTANCES ---------------
 
@@ -361,3 +363,10 @@ void logInfoOnConsole(Measurements m) {
   Serial.print(m.airHeatIndex);
   Serial.println(F("°C "));
 }
+
+// void turnOnEffectorFor5Sec(struct Effector e, unsigned long currentMillis) {
+//   unsigned long interval = 500000;
+//   if (e.state == HIGH && currentMillis - e.prevMillis >= interval) {
+//     e.state = LOW;
+//   } else
+// }
