@@ -17,6 +17,12 @@ const int DEBUG_TIME_ACCEL = 1; // divide all times by this to accelerate invest
 const int DHT_PIN = A0; // DHT hum/temp sensor pin
 const int ONE_WIRE_PIN = 16; // DS18B20 temp sensor pin
 const int SOIL_HUM_PIN = 8;
+const int WATER_PUMP_PIN = 3;
+const int BLOWER_PIN = 4;
+const int RADIATOR_VALVE_PIN = 6;
+// const int SHORTEST_PATH_VALVE_PIN 
+const int AIR_RENEWAL_VALVE_PIN = 5;
+
 
 const int SOIL_MOISTURE_SIGNAL_PIN = A1;
 const int SOIL_MOISTURE_POWER_PIN = 52;
@@ -83,7 +89,7 @@ struct Effectors {
   struct Effector waterPump;
   struct Effector blower;
   struct Effector radiatorValve; // Opens air system to radiator
-  struct Effector shortestPathValve; // Opens air system to shortest path
+  // struct Effector shortestPathValve; // Opens air system to shortest path
   struct Effector airRenewalValve; // Opens air circulation to ambient atmosphere
 };
 
@@ -111,35 +117,35 @@ Sensors sensors {
 
 Effectors effectors {
   .waterPump = {
-      .state = LOW,
+      .pin = WATER_PUMP_PIN,
       .prevState = LOW,
       .prevMillis = 0,
       .onInterval = 1000,
       .offInterval = 0
     },
     .blower = {
-      .state = LOW,
+      .pin = BLOWER_PIN,
       .prevState = LOW,
       .prevMillis = 0,
       .onInterval = BLOWER_ON_INTERVAL,
       .offInterval = BLOWER_OFF_INTERVAL
     },
     .radiatorValve = {
-      .state = LOW,
+      .pin = RADIATOR_VALVE_PIN,
       .prevState = LOW,
       .prevMillis = 0,
       .onInterval = BLOWER_ON_INTERVAL + VALVE_BUFFER_INTERVAL,
       .offInterval = 0
     },
-    .shortestPathValve = {
-      .state = LOW,
-      .prevState = LOW,
-      .prevMillis = 0,
-      .onInterval = BLOWER_ON_INTERVAL + VALVE_BUFFER_INTERVAL,
-      .offInterval = 0,
-    },
+    // .shortestPathValve = {
+    //   .pin = SHORTEST_PATH_VALVE_PIN,
+    //   .prevState = LOW,
+    //   .prevMillis = 0,
+    //   .onInterval = BLOWER_ON_INTERVAL + VALVE_BUFFER_INTERVAL,
+    //   .offInterval = 0,
+    // },
     .airRenewalValve = {
-      .state = LOW,
+      .pin = AIR_RENEWAL_VALVE_PIN,
       .prevState = LOW,
       .prevMillis = 0,
       .onInterval = BLOWER_ON_INTERVAL,
@@ -160,13 +166,35 @@ void setup() {
   Serial.begin(9600);
   sensors.dht.begin();
   soilTempProbe.begin();
+
+  // Set all effectors pins as output pins
+  pinMode(effectors.waterPump.pin, OUTPUT);
+  pinMode(effectors.blower.pin, OUTPUT);
+  pinMode(effectors.radiatorValve.pin, OUTPUT);
+  // pinMode(effectors.shortestPathValve.pin, OUTPUT);
+  pinMode(effectors.airRenewalValve.pin, OUTPUT);
+
+  // Start all effectors in the off state
+  digitalWrite(effectors.waterPump.pin, LOW);
+  digitalWrite(effectors.blower.pin, LOW);
+  digitalWrite(effectors.radiatorValve.pin, LOW);
+  // digitalWrite(effectors.shortestPathValve.pin, LOW);
+  digitalWrite(effectors.airRenewalValve.pin, LOW);
 }
 
 // Take measurements every 1 min when system is at rest
 // Take measurements every 3s when air is circulating
 // Show measurements on LCD
 
+bool firstRun = true;
 void loop() {
+  if (firstRun) {
+    digitalWrite(effectors.waterPump.pin, HIGH);
+    delay(5000);
+  }
+  digitalWrite(effectors.waterPump.pin, LOW);
+  firstRun = false;
+
   // put your main code here, to run repeatedly:
   unsigned long currentMillis = millis();
   readSensors(currentMillis, sensors, measurements);
@@ -224,18 +252,18 @@ void changeState(unsigned long currentMillis, Measurements m, Effectors *e) {
 
   // --------- Air renewal -------------
   // O2 should NEVER go below minimum.
-  e->airRenewalValve.prevState = e->airRenewalValve.state;
+  e->airRenewalValve.prevState = digitalRead(e->airRenewalValve.pin);
   if (IS_O2_SENSOR_ENABLED) {
     if (m.airO2 < AIR_O2_MIN) {
       // If O2 is low, continuously renew air until the normal level is reached.
-      e->airRenewalValve.state = HIGH;
-      if (e->airRenewalValve.prevState != e->airRenewalValve.state) {
+      digitalWrite(e->airRenewalValve.pin, HIGH);
+      if (e->airRenewalValve.prevState != digitalRead(e->airRenewalValve.pin)) {
         Serial.print(F("O2 low: opening air renewal valve"));
       }
       circulateAir = true;
     } else if (m.airO2 >= AIR_O2_NORM) {
-      e->airRenewalValve.state = LOW;
-      if (e->airRenewalValve.prevState != e->airRenewalValve.state) {
+      digitalWrite(e->airRenewalValve.pin, LOW);
+      if (e->airRenewalValve.prevState != digitalRead(e->airRenewalValve.pin)) {
         Serial.print(F("O2 normal: closing air renewal valve"));
       }
     }
@@ -244,100 +272,100 @@ void changeState(unsigned long currentMillis, Measurements m, Effectors *e) {
     if (millis() - e->airRenewalValve.prevMillis >= e->airRenewalValve.offInterval){
       Serial.print(F("Opening air renewal valve on set schedule"));
       e->airRenewalValve.prevMillis = millis();
-      e->airRenewalValve.state = HIGH;    
+      digitalWrite(e->airRenewalValve.pin,  HIGH);    
       circulateAir = true;
     } else if (millis() - e->airRenewalValve.prevMillis >= e->airRenewalValve.onInterval && 
-        e->airRenewalValve.state == HIGH) {
+        digitalRead(e->airRenewalValve.pin) == HIGH) {
       Serial.print(F("Closing air renewal valve on set schedule"));
       e->airRenewalValve.prevMillis = millis();
-      e->airRenewalValve.state = HIGH;  
+      digitalWrite(e->airRenewalValve.pin, HIGH);  
     }
   }
 
   // --------- Radiator -------------
   // Temperature should NEVER go above maximum.
-  e->radiatorValve.prevState = e->radiatorValve.state;
-  if (m.airTemp >= MAX_TEMP_C && e->radiatorValve.state == LOW) {
+  e->radiatorValve.prevState = digitalRead(e->radiatorValve.pin);
+  if (m.airTemp >= MAX_TEMP_C && digitalRead(e->radiatorValve.pin) == LOW) {
     // Open radiatior path and close direct path.
-    e->radiatorValve.state = HIGH;
-    e->shortestPathValve.state = LOW;
+    digitalWrite(e->radiatorValve.pin, HIGH);
+    // digitalWrite(e->shortestPathValve.pin, LOW);
     circulateAir = true;
-    if (e->radiatorValve.prevState != e->radiatorValve.state) {
+    if (e->radiatorValve.prevState != digitalRead(e->radiatorValve.pin)) {
       Serial.print(F("Temperature high: opening radiator valve and closing shortest path valve"));
     }
-  } else if (m.airTemp < MAX_TEMP_C && e->radiatorValve.state == HIGH) {
-    e->radiatorValve.state = LOW;
-    e->shortestPathValve.state = HIGH;
-    if (e->radiatorValve.prevState != e->radiatorValve.state) {
+  } else if (m.airTemp < MAX_TEMP_C && digitalRead(e->radiatorValve.pin) == HIGH) {
+    digitalWrite(e->radiatorValve.pin, LOW);
+    // digitalWrite(e->shortestPathValve.pin, HIGH);
+    if (e->radiatorValve.prevState != digitalRead(e->radiatorValve.pin)) {
       Serial.print(F("Temperature in range: closing radiator valve and opening shortest path valve"));
     }
   }
   // --------- Humidity -------------
-  e->waterPump.prevState = e->waterPump.state;
+  e->waterPump.prevState = digitalRead(e->waterPump.pin);
   if (m.soilHumidity >= SOIL_H2O_MAX) {
-    e->waterPump.state = LOW;
+    digitalWrite(e->waterPump.pin, LOW);
     circulateAir = true;
-    if (e->waterPump.prevState != e->waterPump.state) {
+    if (e->waterPump.prevState != digitalRead(e->waterPump.pin)) {
       Serial.print(F("Soil humidity high: aerating for evaporation"));
     }
   } else if (m.soilHumidity < SOIL_H2O_MIN) {
-    e->waterPump.state = HIGH;
+    digitalWrite(e->waterPump.pin, HIGH);
     circulateAir = true;
-    if (e->waterPump.prevState != e->waterPump.state) {
+    if (e->waterPump.prevState != digitalRead(e->waterPump.pin)) {
       Serial.print(F("Soil humidity low: adding water\n"));
     }
-  } else if (m.soilHumidity >= SOIL_H2O_NORM && e->waterPump.state == HIGH) {
-    e->waterPump.state = LOW;
-    if (e->waterPump.prevState != e->waterPump.state) {
+  } else if (m.soilHumidity >= SOIL_H2O_NORM && digitalRead(e->waterPump.pin) == HIGH) {
+    digitalWrite(e->waterPump.pin, LOW);
+    if (e->waterPump.prevState != digitalRead(e->waterPump.pin)) {
       Serial.print(F("Soil humidity in range: stop water pump"));
     }
   }
   // --------- Circulate air -------------
-  e->blower.prevState = e->blower.state;
+  e->blower.prevState = digitalRead(e->blower.pin);
   if (circulateAir) {
     // Blow air until above params are in check and do not toggle `circulateAir` to true anymore.
     e->blower.prevMillis = millis();
-    e->blower.state = HIGH;
-    if (e->blower.prevState != e->blower.state) {
+    digitalWrite(e->blower.pin, HIGH);
+    if (e->blower.prevState != digitalRead(e->blower.pin)) {
       // Serial.print(F("Turning blower on to adjust parameters"));
     }
   } else if (millis() - e->blower.prevMillis >= BLOWER_OFF_INTERVAL) {
     e->blower.prevMillis = millis();
-    e->blower.state = HIGH;
+    digitalWrite(e->blower.pin, HIGH);
   } else if (millis() - e->blower.prevMillis >= BLOWER_ON_INTERVAL) {
     e->blower.prevMillis = millis();
-    e->blower.state = LOW;
+    digitalWrite(e->blower.pin,  LOW);
   }
 
   // Log state of effectors if an update occured
-  if (e->waterPump.prevState != e->waterPump.state ||
-      e->blower.prevState != e->blower.state ||
-      e->radiatorValve.prevState != e->radiatorValve.state ||
-      e->shortestPathValve.prevState != e->shortestPathValve.state ||
-      e->airRenewalValve.prevState != e->airRenewalValve.state) {
+  if (e->waterPump.prevState != digitalRead(e->waterPump.pin) ||
+      e->blower.prevState != digitalRead(e->blower.pin) ||
+      e->radiatorValve.prevState != digitalRead(e->radiatorValve.pin) ||
+      // e->shortestPathValve.prevState != digitalRead(e->shortestPathValve.pin) ||
+      e->airRenewalValve.prevState != digitalRead(e->airRenewalValve.pin)) {
     logEffectorStateOnConsole(*e);
   }
 }
 
 void logEffectorStateOnConsole(Effectors e) {
   Serial.print(F("Water Pump: \t\t  "));
-  Serial.print(e.waterPump.state);
+  Serial.print(digitalRead(e.waterPump.pin));
   Serial.print(F("\n"));
 
   Serial.print(F("Blower: \t\t  "));
-  Serial.print(e.blower.state);
+  Serial.print(digitalRead(e.blower.pin));
   Serial.print(F("\n"));
 
   Serial.print(F("Radiator valve: \t  "));
-  Serial.print(e.radiatorValve.state);
+  Serial.print(digitalRead(e.radiatorValve.pin));
   Serial.print(F("\n"));
 
-  Serial.print(F("Shortest path valve: \t  "));
-  Serial.print(e.shortestPathValve.state);
-  Serial.print(F("\n"));
+  // Serial.print(F("Shortest path valve: \t  "));
+  // Serial.print(digitalRead(e.shortestPathValve.pin));
+  // Serial.print(F("\n"));
 
   Serial.print(F("Air renewal valve: \t  "));
-  Serial.print(e.airRenewalValve.state);
+  Serial.print(digitalRead(e.airRenewalValve.pin));
   Serial.print(F("\n\n"));
 }
 
