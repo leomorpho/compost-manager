@@ -8,7 +8,7 @@
 #define DHTTYPE DHT11
 
 // TODO: hook up O2 sensor and enable.
-
+bool TEST_ALL_EFFECTORS_ON_STARTUP = true;
 // --------CONSTANTS (won't change)---------------
 // Digital pin connected to the DHT sensor
 // Pin 15 can work but DHT must be disconnected during program upload.
@@ -101,13 +101,6 @@ struct Sensors {
   Sensor methane; // TODO
 };
 
-//------------ HEADERS---------------------
-void changeState(unsigned long currentMillis, struct Measurements measurements, struct Effectors *effectors);
-void logEffectorStateOnConsole(struct Effectors effectors);
-void display(struct Measurements measurements);
-void logInfoOnConsole(struct Measurements measurements);
-// void turnOnEffectorFor5Sec(struct Effector effector, unsigned long currentMillis);
-
 //----------- STRUCT INSTANCES ---------------
 
 Sensors sensors {
@@ -153,7 +146,12 @@ Effectors effectors {
     }
 };
 //------------ HEADERS---------------------
+void changeState(unsigned long currentMillis, struct Measurements measurements, struct Effectors *effectors);
+void logEffectorStateOnConsole(struct Effectors effectors);
+void display(struct Measurements measurements);
+void logInfoOnConsole(struct Measurements measurements);
 void readSensors(unsigned long currentMillis, Sensors sensors, Measurements measurements);
+void testAllEffectorOnStartup(struct Effectors effectors);
 
 //------------ VARIABLES (will change)---------------------
 unsigned long prevSensorsMillis = 0;
@@ -180,25 +178,21 @@ void setup() {
   digitalWrite(effectors.radiatorValve.pin, LOW);
   // digitalWrite(effectors.shortestPathValve.pin, LOW);
   digitalWrite(effectors.airRenewalValve.pin, LOW);
+
+  if (TEST_ALL_EFFECTORS_ON_STARTUP) {
+    testAllEffectorOnStartup(effectors);
+  }
 }
 
 // Take measurements every 1 min when system is at rest
 // Take measurements every 3s when air is circulating
 // Show measurements on LCD
 
-bool firstRun = true;
 void loop() {
-  if (firstRun) {
-    digitalWrite(effectors.waterPump.pin, HIGH);
-    delay(5000);
-  }
-  digitalWrite(effectors.waterPump.pin, LOW);
-  firstRun = false;
-
   // put your main code here, to run repeatedly:
-  unsigned long currentMillis = millis();
-  readSensors(currentMillis, sensors, measurements);
-  changeState(currentMillis, measurements, &effectors);
+  // unsigned long currentMillis = millis();
+  // readSensors(currentMillis, sensors, measurements);
+  // changeState(currentMillis, measurements, &effectors);
 }
 
 void readSensors(unsigned long currentMillis, Sensors s, Measurements m) {
@@ -392,9 +386,28 @@ void logInfoOnConsole(Measurements m) {
   Serial.println(F("°C "));
 }
 
-// void turnOnEffectorFor5Sec(struct Effector e, unsigned long currentMillis) {
-//   unsigned long interval = 500000;
-//   if (e.state == HIGH && currentMillis - e.prevMillis >= interval) {
-//     e.state = LOW;
-//   } else
-// }
+void testAllEffectorOnStartup(struct Effectors effectors) {
+  unsigned long runtime = 1000;
+  unsigned long breakTime = 1000;
+  digitalWrite(effectors.blower.pin, HIGH);
+  delay(runtime);
+  digitalWrite(effectors.blower.pin, LOW);
+
+  delay(breakTime);
+
+  digitalWrite(effectors.airRenewalValve.pin, HIGH);
+  delay(runtime);
+  digitalWrite(effectors.airRenewalValve.pin, LOW);
+
+  delay(breakTime);
+
+  digitalWrite(effectors.radiatorValve.pin, HIGH);
+  delay(runtime);
+  digitalWrite(effectors.radiatorValve.pin, LOW);
+
+  delay(breakTime);
+
+  digitalWrite(effectors.waterPump.pin, HIGH);
+  delay(runtime);
+  digitalWrite(effectors.waterPump.pin, LOW);
+}
