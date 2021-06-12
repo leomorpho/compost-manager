@@ -57,6 +57,7 @@ const char WATER_PUMP_ON_MSG = 'g';
 const char WATER_PUMP_OFF_MSG = 'h';
 
 const char SENSOR_VALUES_MSG_HEADER = 'i';
+const char TEST_ALL_SYSTEM_MSG = 'j';
 //========================================
 
 // Initialize connected hardware if required
@@ -153,7 +154,7 @@ void readSensors(unsigned long currentMillis, Sensors sensors, Measurements meas
 // void logEffectorStateOnConsole(struct Effectors effectors);
 void display(struct Measurements measurements);
 void logInfoOnConsole(struct Measurements measurements);
-void testAllEffectorOnStartup(struct Effectors effectors);
+void testAllEffector(struct Effectors effectors);
 
 //------------ VARIABLES (will change)---------------------
 unsigned long prevSensorsMillis = 0;
@@ -182,7 +183,7 @@ void setup() {
   //digitalWrite(RASPBERRY_PI_PIN, HIGH);
 
   if (TEST_ALL_EFFECTORS_ON_STARTUP) {
-    testAllEffectorOnStartup(effectors);
+    testAllEffector(effectors);
   }
 }
 
@@ -229,6 +230,9 @@ void loop() {
       case WATER_PUMP_OFF_MSG: // Turn off water pump
         turnOn = false;
         pin = effectors.waterPump.pin;
+        break;
+      case TEST_ALL_SYSTEM_MSG:
+        testAllEffector(effectors);
         break;
       default:
         Serial.print("error: message '");
@@ -307,28 +311,49 @@ void logInfoOnConsole(Measurements m) {
   Serial.println(F("°C "));
 }
 
-void testAllEffectorOnStartup(struct Effectors effectors) {
-  unsigned long runtime = 1000;
-  unsigned long breakTime = 1000;
+void testAllEffector(struct Effectors effectors) {
+  unsigned long runtime = 1500;
+  unsigned long breakTime = 1500;
+  Serial.print(TEST_ALL_SYSTEM_MSG);
+  Serial.println(F(" start testing all effectors"));
+  Serial.print(TEST_ALL_SYSTEM_MSG);
+  Serial.println(F(" test blower..."));
   digitalWrite(effectors.blower.pin, HIGH);
   delay(runtime);
   digitalWrite(effectors.blower.pin, LOW);
 
   delay(breakTime);
 
+  Serial.print(TEST_ALL_SYSTEM_MSG);
+  Serial.println(F(" test air renewal valve..."));
   digitalWrite(effectors.airRenewalValve.pin, HIGH);
   delay(runtime);
   digitalWrite(effectors.airRenewalValve.pin, LOW);
 
   delay(breakTime);
 
+  Serial.print(TEST_ALL_SYSTEM_MSG);
+  Serial.println(F(" test radiator valve..."));
   digitalWrite(effectors.radiatorValve.pin, HIGH);
   delay(runtime);
   digitalWrite(effectors.radiatorValve.pin, LOW);
 
   delay(breakTime);
 
+  Serial.print(TEST_ALL_SYSTEM_MSG);
+  Serial.println(F(" test water pump..."));
   digitalWrite(effectors.waterPump.pin, HIGH);
   delay(runtime);
   digitalWrite(effectors.waterPump.pin, LOW);
+
+  Serial.print(TEST_ALL_SYSTEM_MSG);
+  Serial.println(F(" test water pump and radiator valve..."));
+  digitalWrite(effectors.waterPump.pin, HIGH);
+  digitalWrite(effectors.radiatorValve.pin, HIGH);
+  delay(runtime);
+  digitalWrite(effectors.waterPump.pin, LOW);
+  digitalWrite(effectors.radiatorValve.pin, LOW);
+
+  Serial.print(TEST_ALL_SYSTEM_MSG);
+  Serial.println(F(" finished testing all effectors"));
 }
